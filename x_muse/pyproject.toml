@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sound-gen-hub"
+version = "0.1.0"
+description = "EEG acquisition hub (BlueMuse LSL & BrainFlow backends) for sound experiments"
+requires-python = ">=3.13"
+dependencies = [
+  "numpy>=2.4.0",
+  "pylsl>=1.17.6",
+  "brainflow>=5.19.0",
+  "pydantic>=2.9.0"
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0.0",
+  "pytest-mock>=3.14.0"
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
