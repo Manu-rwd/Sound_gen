@@ -11,3 +11,5 @@ sessions/
 
 *.env
 *.resolved.*
+
+.vite/
