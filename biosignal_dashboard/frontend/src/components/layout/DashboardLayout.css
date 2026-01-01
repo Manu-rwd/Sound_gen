@@ -1,0 +1,122 @@
+/* Dashboard grid layout styles */
+
+.dashboard-grid {
+    width: 100%;
+}
+
+.grid-panel {
+    background: var(--gradient-card);
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    backdrop-filter: blur(10px);
+    box-shadow: var(--shadow-md);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.panel-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-color);
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.panel-drag-handle {
+    cursor: grab;
+    color: var(--text-muted);
+    font-size: 14px;
+    padding: 4px;
+    opacity: 0.6;
+    transition: opacity 0.2s ease;
+    user-select: none;
+}
+
+.panel-drag-handle:hover {
+    opacity: 1;
+    color: var(--text-secondary);
+}
+
+.panel-drag-handle:active {
+    cursor: grabbing;
+}
+
+.panel-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.panel-content {
+    flex: 1;
+    padding: 8px;
+    overflow: hidden;
+}
+
+/* React Grid Layout overrides */
+.react-grid-item {
+    transition: all 200ms ease;
+    transition-property: left, top;
+}
+
+.react-grid-item.cssTransforms {
+    transition-property: transform;
+}
+
+.react-grid-item.resizing {
+    z-index: 10;
+    will-change: width, height;
+}
+
+.react-grid-item.react-draggable-dragging {
+    z-index: 10;
+    will-change: transform;
+    opacity: 0.9;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.react-grid-item>.react-resizable-handle {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    bottom: 0;
+    right: 0;
+    cursor: se-resize;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.react-grid-item:hover>.react-resizable-handle {
+    opacity: 0.5;
+}
+
+.react-grid-item>.react-resizable-handle::after {
+    content: '';
+    position: absolute;
+    right: 4px;
+    bottom: 4px;
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid var(--text-muted);
+    border-bottom: 2px solid var(--text-muted);
+}
+
+/* Empty state */
+.empty-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 300px;
+    background: var(--gradient-card);
+    border-radius: 12px;
+    border: 1px dashed var(--border-color);
+}
+
+.empty-state p {
+    color: var(--text-muted);
+    font-size: 15px;
+}
