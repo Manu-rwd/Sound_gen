@@ -1,0 +1,37 @@
+[project]
+name = "dashboard-backend"
+version = "0.1.0"
+description = "Real-time biosignal dashboard backend with WebSocket streaming"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "pydantic>=2.10.0",
+    "numpy>=2.0.0",
+    "scipy>=1.14.0",
+    "pyserial>=3.5",
+    "pylsl>=1.16.0",
+    "brainflow>=5.12.0",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "httpx>=0.28.0",
+]
+
+[project.optional-dependencies]
+# Local sensor packages (install with: pip install -e .[sensors])
+sensors = [
+    "sound-gen-hub @ file:///${PROJECT_ROOT}/../x_muse",
+    "gsr-hub @ file:///${PROJECT_ROOT}/../x_gsr",
+    "ecg-hub @ file:///${PROJECT_ROOT}/../x_ecg",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

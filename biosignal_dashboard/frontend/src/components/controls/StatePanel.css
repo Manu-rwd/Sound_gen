@@ -1,0 +1,87 @@
+/* StatePanel styles */
+
+.state-panel {
+    background: rgba(30, 30, 40, 0.8);
+    border-radius: 12px;
+    padding: 16px;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.state-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.state-header h3 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.9);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.state-updated {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.state-label-container {
+    text-align: center;
+    margin-bottom: 16px;
+}
+
+.state-label {
+    font-size: 18px;
+    font-weight: 600;
+    color: #fff;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 8px 16px;
+    border-radius: 20px;
+    display: inline-block;
+}
+
+.gauges-container {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.gauge {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.gauge-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.7);
+    width: 70px;
+    flex-shrink: 0;
+}
+
+.gauge-bar-container {
+    flex: 1;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.gauge-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.5s ease-out, background-color 0.3s ease;
+}
+
+.gauge-value {
+    font-size: 12px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.9);
+    width: 40px;
+    text-align: right;
+}
