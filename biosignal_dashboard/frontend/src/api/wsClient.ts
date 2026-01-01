@@ -23,7 +23,7 @@ export interface WSClientCallbacks {
     onError?: (message: string) => void;
 }
 
-const DEFAULT_URL = 'ws://localhost:8000/ws';
+const DEFAULT_URL = 'ws://127.0.0.1:8000/ws';
 const RECONNECT_DELAY_MS = 2000;
 const PING_INTERVAL_MS = 30000;
 

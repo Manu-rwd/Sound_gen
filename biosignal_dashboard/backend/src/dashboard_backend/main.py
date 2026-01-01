@@ -15,14 +15,16 @@ from .models.messages import (
     AudioEvent,
     AudioMessage,
     ErrorMessage,
+    StateEstimate,
 )
 from .sensors.manager import SensorManager, SensorConfig
 from .ws.connection_manager import ConnectionManager
 from .ws.dispatcher import SamplesDispatcher
+from .state.estimator import StateEstimator
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,  # Temporarily set to DEBUG to diagnose state estimation
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
@@ -64,8 +66,25 @@ async def lifespan(app: FastAPI):
         sensor_manager=app.state.sensor_manager,
     )
     
-    # Start dispatcher
+    # Create state estimator
+    app.state.state_estimator = StateEstimator(
+        update_interval=1.0,  # 1 Hz state updates
+    )
+    
+    # Register state update callback to broadcast to clients
+    def broadcast_state(state: StateEstimate):
+        import asyncio
+        asyncio.create_task(
+            app.state.conn_manager.broadcast_json(state.model_dump())
+        )
+    app.state.state_estimator.register_callback(broadcast_state)
+    
+    # Connect dispatcher to feed data to state estimator
+    app.state.dispatcher.set_state_estimator(app.state.state_estimator)
+    
+    # Start dispatcher and state estimator
     await app.state.dispatcher.start()
+    await app.state.state_estimator.start()
     
     logger.info("Backend ready")
     
@@ -73,6 +92,7 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     logger.info("Shutting down...")
+    await app.state.state_estimator.stop()
     await app.state.dispatcher.stop()
     await app.state.sensor_manager.disable_all()
     logger.info("Backend stopped")

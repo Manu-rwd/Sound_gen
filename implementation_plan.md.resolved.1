@@ -1,0 +1,477 @@
+# Real-Time Biosignal Dashboard – Implementation Plan
+
+A modular, low-latency dashboard for streaming EEG (Muse via LSL), GSR, and ECG (Teensy devices) with real-time visualization, state/mood estimation, and audio correlation.
+
+---
+
+## Target Runtime
+
+- **Python**: 3.13.6 (confirmed)
+- **Node.js**: 20.19.0 (confirmed)
+
+---
+
+## Critical Process Rules
+
+### IMPLEMENTATION_LOG.md Format
+
+The file `biosignal_dashboard/IMPLEMENTATION_LOG.md` MUST be updated after **every completed sub-step**. Format:
+
+```markdown
+## [YYYY-MM-DD HH:MM] STEP: <short description>
+
+**Files touched:**
+- `path/to/file1.py` – created/modified
+- `path/to/file2.tsx` – created/modified
+
+**Tests run:**
+- `pytest tests/test_foo.py` → PASS
+- Manual: connected via browser DevTools → confirmed messages
+
+**Notes:**
+- Any gotchas, caveats, or next actions
+```
+
+This ensures continuity if implementation is interrupted or handed off.
+
+---
+
+### Agent Behavior at Hardware Gates
+
+> [!CAUTION]
+> **Hardware Gate Protocol**: When a step requires hardware or user action (Muse pairing, plugging Teensy, baseline recording, etc.), the agent MUST:
+> 1. **STOP** implementation immediately
+> 2. **EXPLAIN** what Manu needs to do in concrete, numbered steps
+> 3. **WAIT** for explicit confirmation that the condition is satisfied
+> 4. **RESUME** implementation only after confirmation
+
+Hardware gates are marked with ⚠️ in each phase.
+
+---
+
+### API Verification Note
+
+> [!NOTE]
+> Class names and method signatures for `sound_gen_hub`, `gsr_hub`, `ecg_hub` have been verified against the actual code. If any discrepancies are found during implementation, adapt accordingly:
+> - [MuseLSLEEGSource](file:///d:/Projects/Sound_Gen/x_muse/src/sound_gen_hub/acquisition/muse_lsl.py#9-98) with [connect()](file:///d:/Projects/Sound_Gen/x_gsr/src/gsr_hub/acquisition/interfaces.py#21-24), [read_chunk(max_samples, timeout)](file:///d:/Projects/Sound_Gen/x_ecg/src/ecg_hub/interfaces.py#28-39)
+> - [GSRSource](file:///d:/Projects/Sound_Gen/x_gsr/src/gsr_hub/acquisition/gsr_source.py#9-74) with [connect()](file:///d:/Projects/Sound_Gen/x_gsr/src/gsr_hub/acquisition/interfaces.py#21-24), [start()](file:///d:/Projects/Sound_Gen/x_gsr/src/gsr_hub/acquisition/interfaces.py#25-28), [next_chunk(max_samples)](file:///d:/Projects/Sound_Gen/x_gsr/src/gsr_hub/acquisition/interfaces.py#29-40), [stop()](file:///d:/Projects/Sound_Gen/x_gsr/src/gsr_hub/acquisition/gsr_source.py#67-70), [close()](file:///d:/Projects/Sound_Gen/x_gsr/src/gsr_hub/acquisition/gsr_source.py#71-74)
+> - [ECGSource](file:///d:/Projects/Sound_Gen/x_ecg/src/ecg_hub/acquisition/ecg_source.py#12-82) with [connect()](file:///d:/Projects/Sound_Gen/x_gsr/src/gsr_hub/acquisition/interfaces.py#21-24), [read_chunk(max_samples)](file:///d:/Projects/Sound_Gen/x_ecg/src/ecg_hub/interfaces.py#28-39), [close()](file:///d:/Projects/Sound_Gen/x_gsr/src/gsr_hub/acquisition/gsr_source.py#71-74)
+
+---
+
+## Architecture Overview
+
+```mermaid
+flowchart LR
+    subgraph Sensors
+        Muse["Muse EEG<br/>(BlueMuse/LSL)"]
+        GSR["Teensy GSR<br/>(Serial)"]
+        ECG["Teensy ECG<br/>(Serial)"]
+    end
+
+    subgraph Backend["FastAPI Backend"]
+        SM["SensorManager"]
+        Runners["Runners<br/>(EEG/GSR/ECG)"]
+        Dispatch["SamplesDispatcher<br/>(20 Hz)"]
+        State["StateEstimator<br/>(1 Hz)"]
+        WS["WebSocket /ws"]
+    end
+
+    subgraph Frontend["React Frontend"]
+        WSClient["WS Client"]
+        Charts["uPlot Charts<br/>(EEG/ECG/GSR)"]
+        StatePanel["State Panel<br/>(Focus/Stress)"]
+        Audio["Audio Timeline"]
+        Layout["react-grid-layout"]
+    end
+
+    Muse --> Runners
+    GSR --> Runners
+    ECG --> Runners
+    Runners --> SM
+    SM --> Dispatch
+    SM --> State
+    Dispatch --> WS
+    State --> WS
+    WS <--> WSClient
+    WSClient --> Charts
+    WSClient --> StatePanel
+    WSClient --> Audio
+    Charts --> Layout
+    StatePanel --> Layout
+    Audio --> Layout
+```
+
+---
+
+## Proposed Changes
+
+### Root Folder Addition
+
+#### [NEW] [start_dashboard.py](file:///d:/Projects/Sound_Gen/start_dashboard.py)
+
+Launcher script in the main `Sound_Gen` folder that starts both backend and frontend:
+
+```python
+"""Launcher script for the biosignal dashboard."""
+import subprocess
+import sys
+from pathlib import Path
+
+def main():
+    # Start backend and frontend processes
+    ...
+
+if __name__ == "__main__":
+    main()
+```
+
+---
+
+### New Project: `biosignal_dashboard/`
+
+#### [NEW] [biosignal_dashboard/](file:///d:/Projects/Sound_Gen/biosignal_dashboard/)
+
+Complete project structure:
+
+```plaintext
+biosignal_dashboard/
+├── IMPLEMENTATION_LOG.md          # Progress tracking (required)
+├── backend/
+│   ├── pyproject.toml
+│   └── src/
+│       └── dashboard_backend/
+│           ├── __init__.py
+│           ├── main.py            # FastAPI app + WS endpoint
+│           ├── config.py          # Configuration settings
+│           ├── models/
+│           │   ├── __init__.py
+│           │   ├── descriptors.py # SensorDescriptor, ChannelInfo
+│           │   └── messages.py    # WebSocket message schemas
+│           ├── sensors/
+│           │   ├── __init__.py
+│           │   ├── base_runner.py # BaseSensorRunner ABC
+│           │   ├── ring_buffer.py # Thread-safe ring buffer
+│           │   ├── muse_eeg_runner.py
+│           │   ├── gsr_runner.py
+│           │   ├── ecg_runner.py
+│           │   ├── fake_runner.py # Simulated sensor for testing
+│           │   └── manager.py     # SensorManager
+│           ├── ws/
+│           │   ├── __init__.py
+│           │   ├── connection_manager.py
+│           │   └── dispatcher.py  # Configurable sample broadcaster
+│           ├── state/
+│           │   ├── __init__.py
+│           │   ├── estimator.py   # StateEstimator (focus/stress)
+│           │   ├── features_eeg.py
+│           │   ├── features_gsr.py
+│           │   └── features_ecg.py
+│           └── audio/
+│               ├── __init__.py
+│               └── events.py      # AudioEvent models
+├── backend/tests/
+│   ├── test_ws_basic.py
+│   ├── test_sensor_manager.py
+│   ├── test_fake_runner.py
+│   └── test_state_estimator.py
+└── frontend/
+    ├── package.json
+    ├── vite.config.ts
+    ├── tsconfig.json
+    └── src/
+        ├── main.tsx
+        ├── App.tsx
+        ├── api/
+        │   ├── wsClient.ts
+        │   └── messageTypes.ts
+        ├── state/
+        │   ├── sensorsStore.ts
+        │   ├── signalBuffers.ts
+        │   ├── stateStore.ts
+        │   └── audioStore.ts
+        └── components/
+            ├── layout/
+            │   └── DashboardLayout.tsx
+            ├── charts/
+            │   ├── EEGChart.tsx
+            │   ├── ECGChart.tsx
+            │   ├── GSRChart.tsx
+            │   └── StateTrendChart.tsx
+            ├── timeline/
+            │   └── AudioTimeline.tsx
+            └── controls/
+                ├── DeviceToggles.tsx
+                ├── AudioControls.tsx
+                └── StatePanel.tsx
+```
+
+---
+
+## Data Models & Protocol
+
+### Sensor Metadata (Backend → Frontend)
+
+```python
+# models/descriptors.py
+from pydantic import BaseModel
+from typing import Literal, List, Optional
+
+SensorKind = Literal["EEG", "ECG", "GSR", "HR", "ACCEL", "OTHER"]
+
+class ChannelInfo(BaseModel):
+    id: str
+    label: str
+    unit: Optional[str] = None
+
+class SensorDescriptor(BaseModel):
+    id: str                    # e.g. "eeg_muse", "gsr_teensy"
+    name: str                  # Human-readable name
+    kind: SensorKind
+    channels: List[ChannelInfo]
+    sampling_rate: float
+    backend: str               # e.g. "lsl", "serial"
+    enabled: bool
+```
+
+### Sample Batches (Backend → Frontend, configurable rate)
+
+```python
+# models/messages.py
+class SampleBatch(BaseModel):
+    deviceId: str
+    timestamp: float           # Unix seconds for first sample
+    channels: List[str]        # Channel IDs
+    samplingRate: float
+    values: List[List[float]]  # shape: [n_samples][n_channels]
+
+class SamplesMessage(BaseModel):
+    type: Literal["samples"] = "samples"
+    payload: List[SampleBatch]
+```
+
+### State Estimates (Backend → Frontend, 1 Hz)
+
+```python
+# state/estimator.py
+class StateScores(BaseModel):
+    focus: float       # 0–1
+    stress: float      # 0–1
+    relaxation: float  # 0–1
+
+class StateEstimate(BaseModel):
+    type: Literal["state"] = "state"
+    timestamp: float
+    scores: StateScores
+    label: Optional[str] = None
+    explanation: Optional[str] = None
+```
+
+### Control Messages (Frontend → Backend)
+
+```typescript
+// api/messageTypes.ts
+type ControlMessage =
+  | { type: 'control'; action: 'enable' | 'disable'; deviceId: string }
+  | { type: 'audio_event'; event: 'start' | 'stop'; trackId: string; trackName?: string };
+```
+
+---
+
+## Dispatcher Configuration
+
+> [!TIP]
+> `SamplesDispatcher` update interval is **configurable** (25–100 ms). Default: **50 ms (20 Hz)**. This can be adjusted based on measured latency/CPU trade-offs via [config.py](file:///d:/Projects/Sound_Gen/x_muse/src/sound_gen_hub/config.py).
+
+```python
+# config.py
+DISPATCHER_INTERVAL_MS = 50  # Default 20 Hz, adjustable 25-100ms
+```
+
+---
+
+## Implementation Phases
+
+### Phase 1 – Backend Skeleton & Simulated Sensor
+**No hardware required**
+
+1. Create project structure with FastAPI, Uvicorn
+2. Implement `ConnectionManager` for WebSocket broadcast
+3. Implement `SamplesDispatcher` (configurable interval, default 20 Hz)
+4. Create `FakeSensorRunner` generating sine waves
+5. Add tests: WebSocket echo, dispatcher broadcast
+6. Update `IMPLEMENTATION_LOG.md`
+
+**Deliverables:**
+- Working `/ws` endpoint sending simulated samples
+- Basic integration test
+
+---
+
+### Phase 2 – Frontend Base & Simulated Chart
+**No hardware required**
+
+1. Create Vite React+TS project
+2. Implement WebSocket client with reconnection
+3. Implement single `EEGChart` using uPlot
+4. Basic CSS styling (dark theme, modern aesthetics)
+5. Update `IMPLEMENTATION_LOG.md`
+
+**Deliverables:**
+- Live updating chart with simulated data
+- WebSocket connection indicator
+
+---
+
+### Phase 3 – Real EEG Integration
+⚠️ **Hardware gate: Muse + BlueMuse**
+
+1. Create `MuseEEGRunner` wrapping [MuseLSLEEGSource](file:///d:/Projects/Sound_Gen/x_muse/src/sound_gen_hub/acquisition/muse_lsl.py#9-98)
+2. Run blocking LSL operations in thread executor
+3. Register in `SensorManager` with proper descriptor
+4. Add UI toggle for enabling/disabling
+5. ⚠️ **STOP** – Provide hardware setup instructions
+6. Test with live EEG
+7. Update `IMPLEMENTATION_LOG.md`
+
+---
+
+### Phase 4 – GSR & ECG Runners
+⚠️ **Hardware gate: Teensy devices**
+
+1. Create `GSRRunner` wrapping [GSRSource](file:///d:/Projects/Sound_Gen/x_gsr/src/gsr_hub/acquisition/gsr_source.py#9-74)
+2. Create `ECGRunner` wrapping [ECGSource](file:///d:/Projects/Sound_Gen/x_ecg/src/ecg_hub/acquisition/ecg_source.py#12-82)
+3. Add corresponding charts and toggles
+4. ⚠️ **STOP** – Provide Teensy setup instructions
+5. Test with live sensors
+6. Update `IMPLEMENTATION_LOG.md`
+
+---
+
+### Phase 5 – Multi-Panel Layout
+**No hardware required**
+
+1. Integrate `react-grid-layout`
+2. Configure draggable/resizable panels
+3. Handle uPlot resize events
+4. Persist layout to localStorage
+5. Update `IMPLEMENTATION_LOG.md`
+
+---
+
+### Phase 6 – State Estimation
+⚠️ **Calibration gate: User baseline**
+
+1. Implement EEG band power extraction (FFT)
+2. Implement ECG HR/HRV from R-peak detection
+3. Implement GSR tonic/phasic decomposition
+4. Create `StateEstimator` computing focus/stress scores
+5. Add `StatePanel` with gauges
+6. ⚠️ **STOP** – Provide calibration instructions
+7. Update `IMPLEMENTATION_LOG.md`
+
+---
+
+### Phase 7 – Audio Control & Timeline
+**No hardware required**
+
+1. Add `<audio>` element with controls
+2. Send `audio_event` messages on play/pause
+3. Implement timeline canvas synced with charts
+4. Display audio segments as colored bars
+5. Update `IMPLEMENTATION_LOG.md`
+
+---
+
+### Phase 8 – Performance & Polish
+**Final testing**
+
+1. Measure end-to-end latency
+2. Optimize dispatcher interval if needed
+3. Add error handling for disconnections
+4. Final UX polish (tooltips, legends, units)
+5. Create `start_dashboard.py` launcher script
+6. Document extensibility for future devices
+7. Update `IMPLEMENTATION_LOG.md`
+
+---
+
+## Verification Plan
+
+### Automated Tests
+
+| Phase | Test | Command |
+|-------|------|---------|
+| 1 | WebSocket echo | `pytest backend/tests/test_ws_basic.py` |
+| 1 | Dispatcher broadcast | `pytest backend/tests/test_sensor_manager.py` |
+| 2 | TypeScript types | `npm run typecheck` |
+| 6 | Feature extraction | `pytest backend/tests/test_state_estimator.py` |
+
+### Manual Verification
+
+| Phase | Check |
+|-------|-------|
+| 1 | Connect via browser DevTools → WS messages visible |
+| 2 | Chart updates smoothly at ~20 FPS |
+| 3 | Real EEG waveforms appear after Muse connection |
+| 4 | GSR/ECG traces appear after Teensy connection |
+| 5 | Panels can be dragged and resized |
+| 6 | Focus/stress scores change with user state |
+| 7 | Audio timeline shows playback segments |
+| 8 | Latency < 150ms (measure with timestamp comparison) |
+
+---
+
+## Dependencies
+
+### Backend
+```toml
+# pyproject.toml
+[project]
+name = "dashboard-backend"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "pydantic>=2.10.0",
+    "numpy>=2.0.0",
+    "scipy>=1.14.0",
+    "pyserial>=3.5",
+    "pylsl>=1.16.0",
+    "pytest>=8.0.0",
+    "httpx>=0.28.0",
+]
+```
+
+### Frontend
+```json
+{
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-grid-layout": "^1.5.0",
+    "uplot": "^1.6.31",
+    "zustand": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0",
+    "@vitejs/plugin-react": "^4.3.0"
+  }
+}
+```
+
+---
+
+## Extensibility
+
+Adding new devices (e.g., Pixel watch, ring, bracer) requires only:
+
+1. New `*Source` class with [connect()](file:///d:/Projects/Sound_Gen/x_gsr/src/gsr_hub/acquisition/interfaces.py#21-24), [read_chunk()](file:///d:/Projects/Sound_Gen/x_ecg/src/ecg_hub/interfaces.py#28-39), [close()](file:///d:/Projects/Sound_Gen/x_gsr/src/gsr_hub/acquisition/gsr_source.py#71-74)
+2. New `*Runner` extending `BaseSensorRunner`
+3. New `SensorDescriptor` registered in `SensorManager`
+4. New chart component in frontend
+5. No WebSocket protocol changes needed

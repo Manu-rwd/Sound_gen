@@ -3,12 +3,16 @@
 from __future__ import annotations
 import asyncio
 import logging
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
+import numpy as np
 
 from ..config import config
 from ..models.messages import SamplesMessage
 from ..sensors.manager import SensorManager
 from .connection_manager import ConnectionManager
+
+if TYPE_CHECKING:
+    from ..state.estimator import StateEstimator
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +24,7 @@ class SamplesDispatcher:
     1. Drains sample buffers from all active sensors
     2. Packages samples into a SamplesMessage
     3. Broadcasts to all connected WebSocket clients
+    4. Optionally feeds data to StateEstimator for analysis
     """
     
     def __init__(
@@ -40,6 +45,7 @@ class SamplesDispatcher:
         self._interval = interval_sec or config.dispatcher_interval_sec
         self._task: Optional[asyncio.Task] = None
         self._running = False
+        self._state_estimator: Optional["StateEstimator"] = None
     
     @property
     def running(self) -> bool:
@@ -50,6 +56,10 @@ class SamplesDispatcher:
     def interval_ms(self) -> float:
         """Get the dispatch interval in milliseconds."""
         return self._interval * 1000
+    
+    def set_state_estimator(self, estimator: "StateEstimator") -> None:
+        """Set the state estimator to receive sample data."""
+        self._state_estimator = estimator
     
     async def start(self) -> None:
         """Start the dispatcher loop."""
@@ -102,6 +112,10 @@ class SamplesDispatcher:
         if not batches:
             return
         
+        # Feed data to state estimator if available
+        if self._state_estimator:
+            self._feed_state_estimator(batches)
+        
         # Create and broadcast message
         message = SamplesMessage(
             type="samples",
@@ -109,3 +123,33 @@ class SamplesDispatcher:
         )
         
         await self._conn_manager.broadcast_json(message.model_dump())
+    
+    def _feed_state_estimator(self, batches: list) -> None:
+        """Feed sample batches to state estimator for analysis."""
+        for batch in batches:
+            device_id = batch.deviceId.lower()
+            
+            # Convert values to numpy array
+            if not batch.values:
+                continue
+            
+            # values is [n_samples][n_channels]
+            data = np.array(batch.values, dtype=np.float32)
+            
+            if "eeg" in device_id or "muse" in device_id:
+                # For multi-channel EEG, pass all channels
+                logger.debug(f"Feeding EEG: {data.shape}, rate={batch.samplingRate}")
+                self._state_estimator.push_eeg_data(data, batch.samplingRate)
+            elif "gsr" in device_id:
+                # GSR is single channel
+                if data.ndim > 1:
+                    data = data[:, 0]
+                logger.debug(f"Feeding GSR: {len(data)} samples, rate={batch.samplingRate}")
+                self._state_estimator.push_gsr_data(data, batch.samplingRate)
+            elif "ecg" in device_id:
+                # ECG is single channel
+                if data.ndim > 1:
+                    data = data[:, 0]
+                logger.debug(f"Feeding ECG: {len(data)} samples, rate={batch.samplingRate}")
+                self._state_estimator.push_ecg_data(data, batch.samplingRate)
+

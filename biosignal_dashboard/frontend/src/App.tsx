@@ -5,15 +5,17 @@
 import { useEffect } from 'react';
 import { wsClient } from './api/wsClient';
 import { useSensorsStore } from './state/sensorsStore';
+import { useStateStore } from './state/stateStore';
 import { signalBuffers } from './state/signalBuffers';
 import { DashboardLayout } from './components/layout/DashboardLayout';
-import { DeviceToggles } from './components/controls/DeviceToggles';
+import { Sidebar } from './components/layout/Sidebar';
 import { ConnectionStatus } from './components/controls/ConnectionStatus';
 import './App.css';
 
 function App() {
   const setConnectionState = useSensorsStore((state) => state.setConnectionState);
   const setSensors = useSensorsStore((state) => state.setSensors);
+  const updateState = useStateStore((state) => state.updateState);
 
   // Initialize WebSocket connection
   useEffect(() => {
@@ -31,6 +33,12 @@ function App() {
           signalBuffers.appendSamples(batch);
         }
       },
+      onState: (stateEstimate) => {
+        // Debug: log incoming state
+        console.log('[App] State received:', stateEstimate);
+        // Update state store with new estimates
+        updateState(stateEstimate.scores, stateEstimate.label);
+      },
       onError: (message) => {
         console.error('Server error:', message);
       },
@@ -43,7 +51,7 @@ function App() {
     return () => {
       wsClient.disconnect();
     };
-  }, [setConnectionState, setSensors]);
+  }, [setConnectionState, setSensors, updateState]);
 
   return (
     <div className="app">
@@ -54,7 +62,7 @@ function App() {
 
       <div className="app-content">
         <aside className="sidebar">
-          <DeviceToggles />
+          <Sidebar />
         </aside>
 
         <main className="main-area">

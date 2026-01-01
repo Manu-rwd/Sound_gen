@@ -85,19 +85,55 @@ class SensorManager:
     
     def _init_real_sensors(self) -> None:
         """Initialize real hardware sensors based on config."""
+        logger.info(f"Initializing real sensors with config: {self._config}")
+        
         if self._config.use_muse_eeg:
             self._init_muse_eeg()
+
+        # Check for shared Teensy port
+        logger.info(f"Checking shared Teensy: use_gsr={self._config.use_gsr}, use_ecg={self._config.use_ecg}, gsr_port={self._config.gsr_port}, ecg_port={self._config.ecg_port}")
         
-        if self._config.use_gsr and self._config.gsr_port:
-            self._init_gsr()
-        
-        if self._config.use_ecg and self._config.ecg_port:
-            self._init_ecg()
+        if (self._config.use_gsr and self._config.use_ecg and 
+            self._config.gsr_port == self._config.ecg_port and 
+            self._config.gsr_port is not None):
+            logger.info(f"Detected shared Teensy on {self._config.gsr_port}, initializing shared runners")
+            self._init_shared_teensy(self._config.gsr_port)
+        else:
+            # Independent ports
+            if self._config.use_gsr and self._config.gsr_port:
+                logger.info("Initializing standalone GSR")
+                self._init_gsr()
+            
+            if self._config.use_ecg and self._config.ecg_port:
+                logger.info("Initializing standalone ECG")
+                self._init_ecg()
         
         if not self._runners:
             logger.warning("No real sensors configured, falling back to fake sensors")
             self._init_fake_sensors()
-    
+
+    def _init_shared_teensy(self, port: str) -> None:
+        """Initialize shared Teensy runners for GSR and ECG."""
+        try:
+            from .shared_runners import SharedGSRRunner, SharedECGRunner
+            from .gsr_runner import create_gsr_descriptor
+            from .ecg_runner import create_ecg_descriptor
+            
+            # GSR
+            gsr_desc = create_gsr_descriptor(port)
+            gsr_runner = SharedGSRRunner(gsr_desc, port)
+            self._runners[gsr_runner.device_id] = gsr_runner
+            logger.info(f"Initialized Shared GSR runner on {port}")
+            
+            # ECG
+            ecg_desc = create_ecg_descriptor(port)
+            ecg_runner = SharedECGRunner(ecg_desc, port)
+            self._runners[ecg_runner.device_id] = ecg_runner
+            logger.info(f"Initialized Shared ECG runner on {port}")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize shared Teensy runners: {e}")
+
     def _init_muse_eeg(self) -> None:
         """Initialize Muse EEG runner."""
         try:
@@ -119,7 +155,7 @@ class SensorManager:
             logger.error(f"Failed to initialize Muse EEG: {e}")
     
     def _init_gsr(self) -> None:
-        """Initialize GSR runner."""
+        """Initialize GSR runner (standalone)."""
         try:
             from gsr_hub.acquisition.gsr_source import GSRSource
             from .gsr_runner import GSRRunner, create_gsr_descriptor
@@ -137,7 +173,7 @@ class SensorManager:
             logger.error(f"Failed to initialize GSR: {e}")
     
     def _init_ecg(self) -> None:
-        """Initialize ECG runner."""
+        """Initialize ECG runner (standalone)."""
         try:
             from ecg_hub.acquisition.ecg_source import ECGSource
             from ecg_hub.acquisition.ecg_serial_client import ECGSerialClient
